@@ -7,6 +7,13 @@
 -------------------------------------------------
 -- CELESTITE UI LIBRARY (SWAPPED FROM TAKE.TXT)
 -------------------------------------------------
+
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+
 local Library = {
     Config = { Font = "Proggy", FontSize = 12 },
     Flags = Flags or {},
