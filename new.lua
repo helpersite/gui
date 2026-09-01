@@ -520,6 +520,84 @@ local function MakeDraggable(frame, handle)
     end)
 end
 
+local NotificationHolder = Create("Frame", {
+    Name = "NotificationHolder",
+    Size = UDim2.new(0, 220, 1, -20),
+    Position = UDim2.new(1, -230, 0, 10),
+    BackgroundTransparency = 1,
+    ZIndex = 200,
+    Parent = ScreenGui
+})
+Create("UIListLayout", {
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    VerticalAlignment = Enum.VerticalAlignment.Bottom,
+    Padding = UDim.new(0, 6),
+    Parent = NotificationHolder
+})
+
+function Library:Notification(opts, duration, accent)
+    local text = type(opts) == "table" and (opts.Text or opts.Name or opts.text) or tostring(opts or "")
+    local dur = type(opts) == "table" and (opts.Duration or opts.duration or 3) or (type(duration) == "number" and duration or 3)
+    local accColor = (type(opts) == "table" and (opts.Accent or opts.Color)) or (typeof(accent) == "Color3" and accent) or Library.Theme.Accent
+
+    local NotifFrame = Create("Frame", {
+        Name = "Notification",
+        Size = UDim2.new(1, 0, 0, 24),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundColor3 = Library.Theme.DarkBackground,
+        BorderSizePixel = 0,
+        ZIndex = 201,
+        Parent = NotificationHolder
+    })
+    AddOutline(NotifFrame)
+    AddInlineOutline(NotifFrame)
+
+    local AccentBar = Create("Frame", {
+        Size = UDim2.new(0, 2, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = accColor,
+        BorderSizePixel = 0,
+        ZIndex = 202,
+        Parent = NotifFrame
+    })
+
+    local NotifLabel = Create("TextLabel", {
+        Text = text,
+        Size = UDim2.new(1, -12, 1, 0),
+        Position = UDim2.new(0, 8, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        FontFace = GetFont(),
+        TextSize = Library.Config.FontSize,
+        TextColor3 = Library.Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center,
+        ZIndex = 202,
+        Parent = NotifFrame,
+        TextStrokeTransparency = 0,
+        TextStrokeColor3 = Color3.fromRGB(0,0,0)
+    })
+    Create("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), Parent = NotifLabel })
+
+    task.spawn(function()
+        task.wait(dur)
+        if NotifFrame and NotifFrame.Parent then
+            Tween(NotifFrame, { BackgroundTransparency = 1 }, 0.2)
+            Tween(AccentBar, { BackgroundTransparency = 1 }, 0.2)
+            Tween(NotifLabel, { TextTransparency = 1, TextStrokeTransparency = 1 }, 0.2)
+            task.wait(0.25)
+            if NotifFrame and NotifFrame.Parent then
+                NotifFrame:Destroy()
+            end
+        end
+    end)
+    return NotifFrame
+end
+
+function Library:Notify(...)
+    return Library:Notification(...)
+end
+
 function Library:Watermark(text)
     local WatermarkObj = {}
     local Frame = Create("Frame", {
@@ -1940,3 +2018,15 @@ function Library:Window(title, size)
                 task.wait(0.5)
                 Refresh()
             end)
+            
+            return ConfigSection
+        end
+
+        return Tab
+    end
+    
+    task.delay(0.2, function() Library:UpdateTheme() end)
+    return Window
+end
+
+return Library
