@@ -1223,7 +1223,11 @@ function Library:Window(title, size)
                 btn.MouseButton1Click:Connect(ToggleState)
                 local ToggleObj = { GetState = function() return state end, Get = function() return state end, Set = Set, SetVisibility = function(s) Holder.Visible = (s == true) end }
                 table.insert(Library.Elements.Toggles, { Box = Box, Label = Label, GetState = function() return state end })
-                if opts.Flag or opts.Name then Library.Flags[opts.Flag or opts.Name] = state end
+                if opts.Flag or opts.Name then
+                    Library.Flags[opts.Flag or opts.Name] = state
+                    Library.SetFlags[opts.Flag or opts.Name] = Set
+                    if opts.Flag then Library.SetFlags[opts.Flag] = Set end
+                end
                 if opts.Callback then
                     local initCallback = opts.Callback
                     task.spawn(function()
@@ -1635,7 +1639,11 @@ function Library:Window(title, size)
                 end
                 btn.MouseButton1Down:Connect(function() sliding = true end); UserInputService.InputChanged:Connect(function(input) if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then update(input) end end); UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then sliding = false end end)
                 local Obj = { Get = function() return val end, Set = Set, SetVisibility = function(s) Holder.Visible = (s == true) end }
-                if opts.Flag or opts.Name then Library.Flags[opts.Flag or opts.Name] = val end
+                if opts.Flag or opts.Name then
+                    Library.Flags[opts.Flag or opts.Name] = val
+                    Library.SetFlags[opts.Flag or opts.Name] = Set
+                    if opts.Flag then Library.SetFlags[opts.Flag] = Set end
+                end
                 return Obj
             end
 
@@ -1839,6 +1847,10 @@ function Library:Window(title, size)
                     end
                 }
                 updateFlag()
+                if opts.Flag or opts.Name then
+                    Library.SetFlags[opts.Flag or opts.Name] = Obj.Set
+                    if opts.Flag then Library.SetFlags[opts.Flag] = Obj.Set end
+                end
                 return Obj
             end
             return Section
@@ -1962,20 +1974,45 @@ function Library:Window(title, size)
                     return 
                 end
                 local data = { Theme = {}, Flags = {} }
-                for k, v in pairs(Library.Theme) do data.Theme[k] = {v.R * 255, v.G * 255, v.B * 255} end
+                for k, v in pairs(Library.Theme) do
+                    if typeof(v) == "Color3" then
+                        data.Theme[k] = { math.floor(v.R * 255 + 0.5), math.floor(v.G * 255 + 0.5), math.floor(v.B * 255 + 0.5) }
+                    end
+                end
                 for k, v in pairs(Library.Flags) do
-                    local val = (v.Get and v.Get()) or (v.GetState and v.GetState()) or (v.GetText and v.GetText())
-                    if typeof(val) == "Color3" then val = {val.R * 255, val.G * 255, val.B * 255} end
-                    data.Flags[k] = val
+                    if type(k) == "string" and not k:match("^_") then
+                        if typeof(v) == "Color3" then
+                            data.Flags[k] = { _type = "Color3", R = math.floor(v.R * 255 + 0.5), G = math.floor(v.G * 255 + 0.5), B = math.floor(v.B * 255 + 0.5) }
+                        elseif typeof(v) == "EnumItem" then
+                            data.Flags[k] = { _type = "EnumItem", Name = v.Name, Enum = tostring(v) }
+                        elseif type(v) == "table" then
+                            local item = {}
+                            for subK, subV in pairs(v) do
+                                if typeof(subV) == "EnumItem" then
+                                    item[subK] = { _type = "EnumItem", Name = subV.Name, Enum = tostring(subV) }
+                                elseif typeof(subV) == "Color3" then
+                                    item[subK] = { _type = "Color3", R = math.floor(subV.R * 255 + 0.5), G = math.floor(subV.G * 255 + 0.5), B = math.floor(subV.B * 255 + 0.5) }
+                                elseif type(subV) == "boolean" or type(subV) == "number" or type(subV) == "string" then
+                                    item[subK] = subV
+                                end
+                            end
+                            data.Flags[k] = item
+                        elseif type(v) == "boolean" or type(v) == "number" or type(v) == "string" then
+                            data.Flags[k] = v
+                        end
+                    end
                 end
                 local success, err = pcall(function()
-                    writefile(ConfigDir .. "/" .. ConfigName .. ".json", game:GetService("HttpService"):JSONEncode(data))
+                    if not isfolder("alternate") then makefolder("alternate") end
+                    if not isfolder(ConfigDir) then makefolder(ConfigDir) end
+                    local encoded = game:GetService("HttpService"):JSONEncode(data)
+                    writefile(ConfigDir .. "/" .. ConfigName .. ".json", encoded)
                 end)
                 if success then
                     Refresh()
                     Library:Notification({ Text = "Saved config: " .. ConfigName, Duration = 3 })
                 else
-                    Library:Notification({ Text = "Error saving config", Duration = 5 })
+                    Library:Notification({ Text = "Error saving config: " .. tostring(err), Duration = 5 })
                 end
             end })
             
@@ -1983,18 +2020,48 @@ function Library:Window(title, size)
                 local selected = ConfigList:Get()
                 if not selected or selected == "" then return end
                 local path = ConfigDir .. "/" .. selected .. ".json"
+                if not isfile(path) then
+                    path = ConfigDir .. "/" .. selected .. ".cfg"
+                end
                 local success, err = pcall(function()
-                    local data = game:GetService("HttpService"):JSONDecode(readfile(path))
-                    for k, v in pairs(data.Theme or {}) do if Library.Theme[k] then Library.Theme[k] = Color3.fromRGB(v[1], v[2], v[3]) end end
-                    Library:UpdateTheme()
-                    for k, v in pairs(data.Flags or {}) do
-                        if Library.Flags[k] then
+                    local raw = readfile(path)
+                    local data = game:GetService("HttpService"):JSONDecode(raw)
+                    if data.Theme then
+                        for k, v in pairs(data.Theme) do
+                            if Library.Theme[k] and type(v) == "table" then
+                                Library.Theme[k] = Color3.fromRGB(v[1] or 255, v[2] or 255, v[3] or 255)
+                            end
+                        end
+                        Library:UpdateTheme()
+                    end
+                    if data.Flags then
+                        for k, v in pairs(data.Flags) do
                             local val = v
-                            if type(val) == "table" and #val == 3 then val = Color3.fromRGB(val[1], val[2], val[3]) end
-                            if type(Library.Flags[k]) == "table" and Library.Flags[k].Set then
-                                Library.Flags[k].Set(val)
-                            else
-                                Library.Flags[k] = val
+                            if type(v) == "table" then
+                                if v._type == "Color3" then
+                                    val = Color3.fromRGB(v.R or 255, v.G or 255, v.B or 255)
+                                elseif v._type == "EnumItem" then
+                                    local keyEnum = Enum.KeyCode[v.Name] or Enum.UserInputType[v.Name]
+                                    val = keyEnum or v.Name
+                                else
+                                    local subTable = {}
+                                    for subK, subV in pairs(v) do
+                                        if type(subV) == "table" and subV._type == "EnumItem" then
+                                            local keyEnum = Enum.KeyCode[subV.Name] or Enum.UserInputType[subV.Name]
+                                            subTable[subK] = keyEnum or subV.Name
+                                        elseif type(subV) == "table" and subV._type == "Color3" then
+                                            subTable[subK] = Color3.fromRGB(subV.R or 255, subV.G or 255, subV.B or 255)
+                                        else
+                                            subTable[subK] = subV
+                                        end
+                                    end
+                                    val = subTable
+                                end
+                            end
+                            Library.Flags[k] = val
+                            if Flags then Flags[k] = val end
+                            if Library.SetFlags and Library.SetFlags[k] then
+                                pcall(Library.SetFlags[k], val)
                             end
                         end
                     end
@@ -2002,15 +2069,23 @@ function Library:Window(title, size)
                 if success then
                     Library:Notification({ Text = "Loaded config: " .. selected, Duration = 3 })
                 else
-                    Library:Notification({ Text = "Error loading config", Duration = 5 })
+                    Library:Notification({ Text = "Error loading config: " .. tostring(err), Duration = 5 })
                 end
             end })
 
             ConfigSection:Button({ Name = "Delete Config", Callback = function()
                 local selected = ConfigList:Get()
                 if not selected or selected == "" then return end
-                pcall(function() delfile(ConfigDir .. "/" .. selected .. ".json") end)
+                pcall(function()
+                    if isfile(ConfigDir .. "/" .. selected .. ".json") then
+                        delfile(ConfigDir .. "/" .. selected .. ".json")
+                    end
+                    if isfile(ConfigDir .. "/" .. selected .. ".cfg") then
+                        delfile(ConfigDir .. "/" .. selected .. ".cfg")
+                    end
+                end)
                 Refresh()
+                Library:Notification({ Text = "Deleted config: " .. selected, Duration = 3 })
             end })
 
             task.spawn(function()
