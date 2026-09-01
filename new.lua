@@ -332,7 +332,8 @@ end
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "CelestiteUI"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.DisplayOrder = 999
+ScreenGui.DisplayOrder = 9999
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 ScreenGui.Parent = (gethui and gethui()) or CoreGui
 
 Library.Holder = { Instance = ScreenGui }
@@ -791,21 +792,30 @@ end
 
 local KeybindMenu = Create("Frame", {
     Name = "KeybindContextMenu",
-    Size = UDim2.new(0, 80, 0, 66),
+    Size = UDim2.new(0, 75, 0, 58),
     BackgroundColor3 = Library.Theme.DarkBackground,
     BorderSizePixel = 0,
     Visible = false,
-    ZIndex = 8000,
-    Parent = ScreenGui
+    ZIndex = 10000,
+    Parent = ScreenGui,
+    ClipsDescendants = false
 })
 AddOutline(KeybindMenu)
 AddInlineOutline(KeybindMenu)
 
+local KeybindMenuPad = Create("UIPadding", {
+    PaddingTop = UDim.new(0, 2),
+    PaddingBottom = UDim.new(0, 2),
+    PaddingLeft = UDim.new(0, 2),
+    PaddingRight = UDim.new(0, 2),
+    Parent = KeybindMenu
+})
+
 local KeybindMenuList = Create("UIListLayout", {
     FillDirection = Enum.FillDirection.Vertical,
     HorizontalAlignment = Enum.HorizontalAlignment.Center,
-    VerticalAlignment = Enum.VerticalAlignment.Center,
-    Padding = UDim.new(0, 2),
+    VerticalAlignment = Enum.VerticalAlignment.Top,
+    Padding = UDim.new(0, 1),
     SortOrder = Enum.SortOrder.LayoutOrder,
     Parent = KeybindMenu
 })
@@ -824,18 +834,18 @@ local modes = {"Toggle", "Hold", "Always"}
 for idx, mode in ipairs(modes) do
     local btn = Create("TextButton", {
         Name = mode,
-        Size = UDim2.new(1, -6, 0, 18),
+        Size = UDim2.new(1, 0, 0, 17),
+        BackgroundTransparency = 1,
         BackgroundColor3 = Library.Theme.Background,
         BorderSizePixel = 0,
         FontFace = true,
         Text = mode,
         TextSize = Library.Config.FontSize or 12,
         TextColor3 = Library.Theme.InactiveText,
-        ZIndex = 8001,
+        ZIndex = 10001,
         LayoutOrder = idx,
         Parent = KeybindMenu
     })
-    ApplyCelestiteStyle(btn)
     btn.MouseButton1Click:Connect(function()
         if currentMenuCallback then
             currentMenuCallback(mode)
@@ -844,34 +854,58 @@ for idx, mode in ipairs(modes) do
     end)
     btn.MouseEnter:Connect(function()
         if currentMenuBind and currentMenuBind.Mode == mode then return end
+        btn.BackgroundTransparency = 0.5
+        btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
         btn.TextColor3 = Library.Theme.Text
     end)
     btn.MouseLeave:Connect(function()
         if currentMenuBind and currentMenuBind.Mode == mode then
+            btn.BackgroundTransparency = 0.3
+            btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
             btn.TextColor3 = Library.Theme.Accent
         else
+            btn.BackgroundTransparency = 1
             btn.TextColor3 = Library.Theme.InactiveText
         end
     end)
     modeButtons[mode] = btn
 end
 
-local function OpenKeybindMenu(bind, callback, mousePos)
+local function OpenKeybindMenu(bind, callback, anchorObj)
     currentMenuBind = bind
     currentMenuCallback = callback
     for m, b in pairs(modeButtons) do
         if (bind.Mode or "Toggle") == m then
             b.TextColor3 = Library.Theme.Accent
-            b.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            b.BackgroundTransparency = 0.3
+            b.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         else
             b.TextColor3 = Library.Theme.InactiveText
+            b.BackgroundTransparency = 1
             b.BackgroundColor3 = Library.Theme.Background
         end
     end
     local screenSize = ScreenGui.AbsoluteSize
-    local mx = math.clamp(mousePos.X + 2, 0, math.max(0, screenSize.X - 85))
-    local my = math.clamp(mousePos.Y + 2, 0, math.max(0, screenSize.Y - 70))
-    KeybindMenu.Position = UDim2.new(0, mx, 0, my)
+    local menuW, menuH = 75, 58
+    local posX, posY
+    
+    if anchorObj and typeof(anchorObj) == "Instance" and anchorObj:IsA("GuiObject") then
+        local absPos = anchorObj.AbsolutePosition
+        local absSize = anchorObj.AbsoluteSize
+        posX = absPos.X + absSize.X - menuW
+        posY = absPos.Y + absSize.Y + 2
+    else
+        local mousePos = UserInputService:GetMouseLocation()
+        local inset = game:GetService("GuiService"):GetGuiInset()
+        posX = mousePos.X - inset.X + 2
+        posY = mousePos.Y - inset.Y + 2
+    end
+    
+    posX = math.clamp(posX, 4, math.max(4, screenSize.X - menuW - 4))
+    posY = math.clamp(posY, 4, math.max(4, screenSize.Y - menuH - 4))
+    
+    KeybindMenu.Position = UDim2.new(0, posX, 0, posY)
+    KeybindMenu.Parent = ScreenGui
     KeybindMenu.Visible = true
 end
 
@@ -1207,7 +1241,6 @@ function Library:Window(title, size)
                 end)
                 
                 local function openContextMenu()
-                    local mPos = UserInputService:GetMouseLocation()
                     OpenKeybindMenu(bind, function(newMode)
                         mode = newMode
                         bind.Mode = newMode
@@ -1229,7 +1262,7 @@ function Library:Window(title, size)
                             end
                             if opts.Callback then opts.Callback(bind.Key, false, newMode) end
                         end
-                    end, mPos)
+                    end, BindBtn)
                 end
                 BindBtn.MouseButton2Click:Connect(openContextMenu)
                 
@@ -1462,7 +1495,6 @@ function Library:Window(title, size)
                     BindBtn.MouseButton1Click:Connect(function() if bind.Binding then return end; bind.Binding = true; bind.Started = tick(); bind.Label.Text = "?"; bind.Label.TextColor3 = Library.Theme.Accent end)
                     
                     local function openContextMenu()
-                        local mPos = UserInputService:GetMouseLocation()
                         OpenKeybindMenu(bind, function(newMode)
                             mode = newMode
                             bind.Mode = newMode
@@ -1477,7 +1509,7 @@ function Library:Window(title, size)
                             end
                             if kopts.Callback then kopts.Callback(bind.Key, state, newMode) end
                             updateKeyList()
-                        end, mPos)
+                        end, BindBtn)
                     end
                     BindBtn.MouseButton2Click:Connect(openContextMenu)
                     
