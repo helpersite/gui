@@ -333,7 +333,16 @@ ScreenGui.Name = "CelestiteUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 9999
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-ScreenGui.Parent = (gethui and gethui()) or CoreGui
+
+local parentGui = nil
+pcall(function() if gethui then parentGui = gethui() end end)
+if not parentGui then
+    pcall(function() parentGui = CoreGui end)
+end
+if not parentGui then
+    pcall(function() parentGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui") end)
+end
+ScreenGui.Parent = parentGui or CoreGui
 
 Library.Holder = { Instance = ScreenGui }
 
@@ -935,7 +944,18 @@ function Library:Window(title, size)
     AddInlineOutline(ContentArea, Library.Theme.Inline, Library.Theme.Outline)
     table.insert(Library.Elements.Windows, { Main = Main, TitleBar = TitleBar, Content = ContentArea, AccentLine = AccentLine })
     
-    function Window:SetVisible(v) Main.Visible = v end
+    Window.Main = Main
+    Window.SetVisible = function(selfOrV, maybeV)
+        local v = (selfOrV == Window) and maybeV or selfOrV
+        if v == nil then v = true end
+        Main.Visible = (v ~= false)
+    end
+    Window.SetOpen = function(selfOrV, maybeV)
+        local v = (selfOrV == Window) and maybeV or selfOrV
+        if v == nil then v = true end
+        Main.Visible = (v ~= false)
+    end
+    Window.IsOpen = function() return Main.Visible end
 
     MakeDraggable(Main, TitleBar)
 
