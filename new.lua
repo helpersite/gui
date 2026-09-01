@@ -94,7 +94,6 @@ local function LoadFonts()
             
             LoadedFonts[name] = Font.new(getcustomasset(json_path), Enum.FontWeight.Regular)
         end)
-        if not success then pcall(function() warn("Failed to load font " .. name) end) end
     end
 end
 LoadFonts()
@@ -445,7 +444,6 @@ function Library:Notify(text, duration)
 end
 
 function Library:Log(text)
-    pcall(function() print("[alternate] " .. tostring(text or "")) end)
 end
 
 function Library:Unload()
@@ -803,21 +801,23 @@ local KeybindMenu = Create("Frame", {
 AddOutline(KeybindMenu)
 AddInlineOutline(KeybindMenu)
 
-local KeybindMenuPad = Create("UIPadding", {
-    PaddingTop = UDim.new(0, 2),
-    PaddingBottom = UDim.new(0, 2),
-    PaddingLeft = UDim.new(0, 2),
-    PaddingRight = UDim.new(0, 2),
+local MenuContent = Create("Frame", {
+    Name = "Content",
+    Size = UDim2.new(1, -4, 1, -4),
+    Position = UDim2.new(0, 2, 0, 2),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ZIndex = 10002,
     Parent = KeybindMenu
 })
 
 local KeybindMenuList = Create("UIListLayout", {
     FillDirection = Enum.FillDirection.Vertical,
     HorizontalAlignment = Enum.HorizontalAlignment.Center,
-    VerticalAlignment = Enum.VerticalAlignment.Top,
+    VerticalAlignment = Enum.VerticalAlignment.Center,
     Padding = UDim.new(0, 1),
     SortOrder = Enum.SortOrder.LayoutOrder,
-    Parent = KeybindMenu
+    Parent = MenuContent
 })
 
 local currentMenuBind = nil
@@ -842,9 +842,9 @@ for idx, mode in ipairs(modes) do
         Text = mode,
         TextSize = Library.Config.FontSize or 12,
         TextColor3 = Library.Theme.InactiveText,
-        ZIndex = 10001,
+        ZIndex = 10003,
         LayoutOrder = idx,
-        Parent = KeybindMenu
+        Parent = MenuContent
     })
     btn.MouseButton1Click:Connect(function()
         if currentMenuCallback then
