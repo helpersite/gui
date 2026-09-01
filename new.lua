@@ -149,9 +149,24 @@ UserInputService.InputBegan:Connect(function(input, gpe)
                 end
                 if bind.Callback then bind.Callback(cur) end
             end
-        elseif cur == bind.Key then
+        elseif cur == bind.Key and cur ~= Enum.KeyCode.Unknown and cur ~= Enum.UserInputType.None then
             if not gpe or (cur ~= Enum.UserInputType.MouseButton1 and cur ~= Enum.UserInputType.MouseButton2) then
-                if bind.OnTrigger then bind.OnTrigger() end
+                if bind.Mode == "Hold" then
+                    if bind.OnHold then bind.OnHold(true) end
+                else
+                    if bind.OnTrigger then bind.OnTrigger() end
+                end
+            end
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    local cur = (input.UserInputType == Enum.UserInputType.Keyboard) and input.KeyCode or input.UserInputType
+    for _, bind in pairs(Library.Registry) do
+        if not bind.Binding and cur == bind.Key and cur ~= Enum.KeyCode.Unknown and cur ~= Enum.UserInputType.None then
+            if bind.Mode == "Hold" then
+                if bind.OnHold then bind.OnHold(false) end
             end
         end
     end
@@ -774,6 +789,100 @@ function Library:KeybindList()
     return KeyListObj
 end
 
+local KeybindMenu = Create("Frame", {
+    Name = "KeybindContextMenu",
+    Size = UDim2.new(0, 80, 0, 66),
+    BackgroundColor3 = Library.Theme.DarkBackground,
+    BorderSizePixel = 0,
+    Visible = false,
+    ZIndex = 8000,
+    Parent = ScreenGui
+})
+AddOutline(KeybindMenu)
+AddInlineOutline(KeybindMenu)
+
+local KeybindMenuList = Create("UIListLayout", {
+    FillDirection = Enum.FillDirection.Vertical,
+    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+    VerticalAlignment = Enum.VerticalAlignment.Center,
+    Padding = UDim.new(0, 2),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    Parent = KeybindMenu
+})
+
+local currentMenuBind = nil
+local currentMenuCallback = nil
+local modeButtons = {}
+
+local function CloseKeybindMenu()
+    KeybindMenu.Visible = false
+    currentMenuBind = nil
+    currentMenuCallback = nil
+end
+
+local modes = {"Toggle", "Hold", "Always"}
+for idx, mode in ipairs(modes) do
+    local btn = Create("TextButton", {
+        Name = mode,
+        Size = UDim2.new(1, -6, 0, 18),
+        BackgroundColor3 = Library.Theme.Background,
+        BorderSizePixel = 0,
+        FontFace = true,
+        Text = mode,
+        TextSize = Library.Config.FontSize or 12,
+        TextColor3 = Library.Theme.InactiveText,
+        ZIndex = 8001,
+        LayoutOrder = idx,
+        Parent = KeybindMenu
+    })
+    ApplyCelestiteStyle(btn)
+    btn.MouseButton1Click:Connect(function()
+        if currentMenuCallback then
+            currentMenuCallback(mode)
+        end
+        CloseKeybindMenu()
+    end)
+    btn.MouseEnter:Connect(function()
+        if currentMenuBind and currentMenuBind.Mode == mode then return end
+        btn.TextColor3 = Library.Theme.Text
+    end)
+    btn.MouseLeave:Connect(function()
+        if currentMenuBind and currentMenuBind.Mode == mode then
+            btn.TextColor3 = Library.Theme.Accent
+        else
+            btn.TextColor3 = Library.Theme.InactiveText
+        end
+    end)
+    modeButtons[mode] = btn
+end
+
+local function OpenKeybindMenu(bind, callback, mousePos)
+    currentMenuBind = bind
+    currentMenuCallback = callback
+    for m, b in pairs(modeButtons) do
+        if (bind.Mode or "Toggle") == m then
+            b.TextColor3 = Library.Theme.Accent
+            b.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        else
+            b.TextColor3 = Library.Theme.InactiveText
+            b.BackgroundColor3 = Library.Theme.Background
+        end
+    end
+    local screenSize = ScreenGui.AbsoluteSize
+    local mx = math.clamp(mousePos.X + 2, 0, math.max(0, screenSize.X - 85))
+    local my = math.clamp(mousePos.Y + 2, 0, math.max(0, screenSize.Y - 70))
+    KeybindMenu.Position = UDim2.new(0, mx, 0, my)
+    KeybindMenu.Visible = true
+end
+
+UserInputService.InputBegan:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2) and KeybindMenu.Visible then
+        if not IsWithin(KeybindMenu, input) then
+            CloseKeybindMenu()
+        end
+    end
+end)
+
 function Library:Window(title, size)
     local Window = { Tabs = {} }
     local Main = Create("Frame", { Name = "CelestiteWindow", Size = size or UDim2.new(0, 640, 0, 520), Position = UDim2.new(0.5, -320, 0.5, -260), BackgroundColor3 = Library.Theme.DarkBackground, BorderSizePixel = 0, Parent = ScreenGui, ClipsDescendants = false })
@@ -1044,13 +1153,40 @@ function Library:Window(title, size)
                 local flag = opts.Flag or opts.Name
                 local defaultKey = opts.Key or opts.Default or Enum.KeyCode.Unknown
                 local mode = opts.Mode or "Toggle"
-                local bind = { Key = defaultKey, Binding = false, Started = 0, Label = nil, OnTrigger = function() end, Callback = opts.Callback }
+                local state = false
+                local bind = {
+                    Key = defaultKey,
+                    Binding = false,
+                    Started = 0,
+                    Label = nil,
+                    Mode = mode,
+                    OnTrigger = function()
+                        state = not state
+                        if flag and type(Library.Flags[flag]) == "table" then
+                            Library.Flags[flag].Toggled = state
+                            Library.Flags[flag].active = state
+                        end
+                        if opts.Callback then opts.Callback(defaultKey, state) end
+                    end,
+                    OnHold = function(active)
+                        state = (active == true)
+                        if flag and type(Library.Flags[flag]) == "table" then
+                            Library.Flags[flag].Toggled = state
+                            Library.Flags[flag].active = state
+                        end
+                        if opts.Callback then opts.Callback(defaultKey, state) end
+                    end,
+                    Callback = opts.Callback
+                }
                 if flag then
                     if type(Library.Flags[flag]) == "table" then
                         Library.Flags[flag].Key = defaultKey
                         Library.Flags[flag].key = defaultKey
+                        Library.Flags[flag].mode = mode
+                        Library.Flags[flag].Toggled = state
+                        Library.Flags[flag].active = state
                     else
-                        Library.Flags[flag] = { Key = defaultKey, key = defaultKey, mode = mode, Toggled = false, active = false }
+                        Library.Flags[flag] = { Key = defaultKey, key = defaultKey, mode = mode, Toggled = state, active = state }
                     end
                 end
                 local Holder = Create("Frame", { Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, ZIndex = 6, Parent = ElementList })
@@ -1069,22 +1205,58 @@ function Library:Window(title, size)
                     KeyLabel.Text = "?"
                     KeyLabel.TextColor3 = Library.Theme.Accent
                 end)
+                
+                local function openContextMenu()
+                    local mPos = UserInputService:GetMouseLocation()
+                    OpenKeybindMenu(bind, function(newMode)
+                        mode = newMode
+                        bind.Mode = newMode
+                        if flag and type(Library.Flags[flag]) == "table" then
+                            Library.Flags[flag].mode = newMode
+                        end
+                        if newMode == "Always" then
+                            state = true
+                            if flag and type(Library.Flags[flag]) == "table" then
+                                Library.Flags[flag].active = true
+                                Library.Flags[flag].Toggled = true
+                            end
+                            if opts.Callback then opts.Callback(bind.Key, true, newMode) end
+                        elseif newMode == "Hold" then
+                            state = false
+                            if flag and type(Library.Flags[flag]) == "table" then
+                                Library.Flags[flag].active = false
+                                Library.Flags[flag].Toggled = false
+                            end
+                            if opts.Callback then opts.Callback(bind.Key, false, newMode) end
+                        end
+                    end, mPos)
+                end
+                BindBtn.MouseButton2Click:Connect(openContextMenu)
+                
                 UserInputService.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                        if IsWithin(BindBtn, input) or IsWithin(KeyLabel, input) then
+                            openContextMenu()
+                        end
+                    end
                     if bind.Binding and (tick() - bind.Started) > 0.01 then
                         if input.UserInputType == Enum.UserInputType.Keyboard or input.UserInputType.Name:find("MouseButton") then
-                            bind.Binding = false
-                            bind.Key = (input.UserInputType == Enum.UserInputType.Keyboard) and input.KeyCode or input.UserInputType
-                            KeyLabel.Text = GetKeyName(bind.Key)
-                            KeyLabel.TextColor3 = Library.Theme.Text
-                            if flag then
-                                if type(Library.Flags[flag]) == "table" then
-                                    Library.Flags[flag].Key = bind.Key
-                                    Library.Flags[flag].key = bind.Key
-                                else
-                                    Library.Flags[flag] = { Key = bind.Key, key = bind.Key, mode = mode, Toggled = false, active = false }
+                            if input.UserInputType ~= Enum.UserInputType.MouseButton2 then
+                                bind.Binding = false
+                                bind.Key = (input.UserInputType == Enum.UserInputType.Keyboard) and input.KeyCode or input.UserInputType
+                                KeyLabel.Text = GetKeyName(bind.Key)
+                                KeyLabel.TextColor3 = Library.Theme.Text
+                                if flag then
+                                    if type(Library.Flags[flag]) == "table" then
+                                        Library.Flags[flag].Key = bind.Key
+                                        Library.Flags[flag].key = bind.Key
+                                        Library.Flags[flag].mode = mode
+                                    else
+                                        Library.Flags[flag] = { Key = bind.Key, key = bind.Key, mode = mode, Toggled = state, active = state }
+                                    end
                                 end
+                                if opts.Callback then opts.Callback(bind.Key, state, mode) end
                             end
-                            if opts.Callback then opts.Callback(bind.Key) end
                         end
                     end
                 end)
@@ -1186,14 +1358,17 @@ function Library:Window(title, size)
 
             function Section:Toggle(opts)
                 local state = opts.Default or false
+                local currentBindKey = nil
+                local currentBindFlag = nil
+                local currentBindMode = "Toggle"
                 local Holder = Create("Frame", { Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, ZIndex = 6, Parent = ElementList })
                 local Box = Create("Frame", { Size = UDim2.new(0, 10, 0, 10), Position = UDim2.new(0, 0, 0.5, -5), BackgroundColor3 = state and Library.Theme.Accent or Color3.fromRGB(50, 50, 50), BorderSizePixel = 0, ZIndex = 7, Parent = Holder })
                 ApplyCelestiteStyle(Box)
                 local Label = Create("TextLabel", { Text = opts.Name or "Toggle", Size = UDim2.new(1, -15, 1, 0), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, FontFace = true, TextSize = Library.Config.FontSize, TextColor3 = state and Library.Theme.Text or Library.Theme.InactiveText, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7, Parent = Holder, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0,0,0) })
                 table.insert(Library.Elements.Labels, Label)
-                local RightSide = Create("Frame", { Size = UDim2.new(1, -15, 1, 0), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, ZIndex = 8, Parent = Holder })
+                local RightSide = Create("Frame", { Size = UDim2.new(1, -15, 1, 0), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, ZIndex = 10, Parent = Holder })
                 Create("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Right, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = RightSide })
-                local currentBindKey = nil
+                
                 local function updateKeyList()
                     if Library.KeyList and Library.KeyList.UpdateItem then
                         local hasKey = currentBindKey and currentBindKey ~= Enum.KeyCode.Unknown and currentBindKey ~= Enum.UserInputType.None and currentBindKey ~= "None" and currentBindKey ~= "Unknown"
@@ -1210,16 +1385,20 @@ function Library:Window(title, size)
                     end
                 end
                 local function Set(v)
-                    state = v
+                    state = (v == true)
                     if opts.Flag or opts.Name then Library.Flags[opts.Flag or opts.Name] = state end
+                    if currentBindFlag and type(Library.Flags[currentBindFlag]) == "table" then
+                        Library.Flags[currentBindFlag].Toggled = state
+                        Library.Flags[currentBindFlag].active = state
+                    end
                     Tween(Box, {BackgroundColor3 = state and Library.Theme.Accent or Color3.fromRGB(50, 50, 50)})
                     Tween(Label, {TextColor3 = state and Library.Theme.Text or Library.Theme.InactiveText})
                     updateKeyList()
                     if opts.Callback then opts.Callback(state) end
                     if triggerDependencies then triggerDependencies() end
                 end
-                local function ToggleState() state = not state; Set(state) end
-                local btn = Create("TextButton", { Size = UDim2.new(1, -70, 1, 0), BackgroundTransparency = 1, Text = "", TextTransparency = 1, ZIndex = 9, Parent = Holder })
+                local function ToggleState() Set(not state) end
+                local btn = Create("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", TextTransparency = 1, ZIndex = 8, Parent = Holder })
                 btn.MouseButton1Click:Connect(ToggleState)
                 local ToggleObj = { GetState = function() return state end, Get = function() return state end, Set = Set, SetVisibility = function(s) Holder.Visible = (s == true) end }
                 table.insert(Library.Elements.Toggles, { Box = Box, Label = Label, GetState = function() return state end })
@@ -1239,38 +1418,95 @@ function Library:Window(title, size)
                 function ToggleObj:Keybind(kopts)
                     local flag = kopts.Flag
                     local defaultKey = kopts.Key or kopts.Default or Enum.KeyCode.Unknown
+                    local mode = kopts.Mode or "Toggle"
                     currentBindKey = defaultKey
-                    local bind = { Key = defaultKey, Binding = false, Started = 0, Label = nil, OnTrigger = ToggleState, Callback = function(k) currentBindKey = k; updateKeyList(); if kopts.Callback then kopts.Callback(k) end end }
+                    currentBindFlag = flag
+                    currentBindMode = mode
+                    
+                    local bind = {
+                        Key = defaultKey,
+                        Binding = false,
+                        Started = 0,
+                        Label = nil,
+                        Mode = mode,
+                        OnTrigger = function()
+                            if currentBindMode ~= "Hold" then
+                                ToggleState()
+                            end
+                        end,
+                        OnHold = function(active)
+                            if currentBindMode == "Hold" then
+                                Set(active)
+                            end
+                        end,
+                        Callback = function(k)
+                            currentBindKey = k
+                            updateKeyList()
+                            if kopts.Callback then kopts.Callback(k) end
+                        end
+                    }
                     if flag then
                         if type(Library.Flags[flag]) == "table" then
                             Library.Flags[flag].Key = defaultKey
                             Library.Flags[flag].key = defaultKey
+                            Library.Flags[flag].mode = mode
+                            Library.Flags[flag].Toggled = state
+                            Library.Flags[flag].active = state
                         else
-                            Library.Flags[flag] = { Key = defaultKey, key = defaultKey, mode = "Toggle", Toggled = false, active = false }
+                            Library.Flags[flag] = { Key = defaultKey, key = defaultKey, mode = mode, Toggled = state, active = state }
                         end
                     end
-                    local Label = Create("TextLabel", { Text = GetKeyName(bind.Key), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1, FontFace = true, TextSize = Library.Config.FontSize, TextColor3 = Library.Theme.Text, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 9, Parent = RightSide, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0,0,0) })
+                    local Label = Create("TextLabel", { Text = GetKeyName(bind.Key), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1, FontFace = true, TextSize = Library.Config.FontSize, TextColor3 = Library.Theme.Text, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 11, Parent = RightSide, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0,0,0) })
                     bind.Label = Label; table.insert(Library.Elements.Labels, Label)
-                    local BindBtn = Create("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", ZIndex = 11, Parent = bind.Label })
+                    local BindBtn = Create("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", ZIndex = 12, Parent = bind.Label })
                     BindBtn.MouseButton1Click:Connect(function() if bind.Binding then return end; bind.Binding = true; bind.Started = tick(); bind.Label.Text = "?"; bind.Label.TextColor3 = Library.Theme.Accent end)
+                    
+                    local function openContextMenu()
+                        local mPos = UserInputService:GetMouseLocation()
+                        OpenKeybindMenu(bind, function(newMode)
+                            mode = newMode
+                            bind.Mode = newMode
+                            currentBindMode = newMode
+                            if flag and type(Library.Flags[flag]) == "table" then
+                                Library.Flags[flag].mode = newMode
+                            end
+                            if newMode == "Always" then
+                                Set(true)
+                            elseif newMode == "Hold" then
+                                Set(false)
+                            end
+                            if kopts.Callback then kopts.Callback(bind.Key, state, newMode) end
+                            updateKeyList()
+                        end, mPos)
+                    end
+                    BindBtn.MouseButton2Click:Connect(openContextMenu)
+                    
                     UserInputService.InputBegan:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                            if IsWithin(BindBtn, input) or IsWithin(bind.Label, input) then
+                                openContextMenu()
+                            end
+                        end
                         if bind.Binding and (tick() - bind.Started) > 0.01 then
                             if input.UserInputType == Enum.UserInputType.Keyboard or input.UserInputType.Name:find("MouseButton") then
-                                bind.Binding = false
-                                bind.Key = (input.UserInputType == Enum.UserInputType.Keyboard) and input.KeyCode or input.UserInputType
-                                bind.Label.Text = GetKeyName(bind.Key)
-                                bind.Label.TextColor3 = Library.Theme.Text
-                                currentBindKey = bind.Key
-                                if flag then
-                                    if type(Library.Flags[flag]) == "table" then
-                                        Library.Flags[flag].Key = bind.Key
-                                        Library.Flags[flag].key = bind.Key
-                                    else
-                                        Library.Flags[flag] = { Key = bind.Key, key = bind.Key, mode = "Toggle", Toggled = false, active = false }
+                                if input.UserInputType ~= Enum.UserInputType.MouseButton2 then
+                                    bind.Binding = false
+                                    bind.Key = (input.UserInputType == Enum.UserInputType.Keyboard) and input.KeyCode or input.UserInputType
+                                    bind.Label.Text = GetKeyName(bind.Key)
+                                    bind.Label.TextColor3 = Library.Theme.Text
+                                    currentBindKey = bind.Key
+                                    if flag then
+                                        if type(Library.Flags[flag]) == "table" then
+                                            Library.Flags[flag].Key = bind.Key
+                                            Library.Flags[flag].key = bind.Key
+                                            Library.Flags[flag].mode = mode
+                                        else
+                                            Library.Flags[flag] = { Key = bind.Key, key = bind.Key, mode = mode, Toggled = state, active = state }
+                                        end
                                     end
+                                    updateKeyList()
+                                    if bind.Callback then bind.Callback(bind.Key, state, mode) end
                                 end
-                                updateKeyList()
-                                if bind.Callback then bind.Callback(bind.Key) end
                             end
                         end
                     end)
