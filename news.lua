@@ -2047,7 +2047,8 @@ function Library:Window(title, size)
                 Button.MouseButton1Click:Connect(function()
                     dropped = not dropped
                     if dropped then
-                        if opts.OnOpen then opts.OnOpen() end
+                        if opts.OnOpen then pcall(opts.OnOpen) end
+                        if Obj and Obj.OnOpen then pcall(Obj.OnOpen) end
                         task.defer(function()
                             UpdateList()
                             DropContainer.Position = UDim2.new(0, Box.AbsolutePosition.X, 0, Box.AbsolutePosition.Y + 20)
@@ -2071,49 +2072,53 @@ function Library:Window(title, size)
                     end
                 end)
                 
-                local Obj = { 
-                    Get = function()
-                        if opts.Multi then
-                            local copy = {}
-                            for _, v in ipairs(selected) do table.insert(copy, v) end
-                            return copy
-                        end
-                        return selected
-                    end, 
-                    Set = function(v)
-                        if opts.Multi then
-                            selected = {}
-                            selectedSet = {}
-                            if type(v) == "table" then
-                                for _, item in ipairs(v) do
-                                    if item ~= nil then
-                                        selectedSet[item] = true
-                                        table.insert(selected, item)
-                                    end
-                                end
-                            elseif v ~= nil then
-                                selected = { v }
-                                selectedSet[v] = true
-                            end
-                        else
-                            selected = v
-                        end
-                        updateFlag()
-                        ValueLabel.Text = formatSelected()
-                        UpdateList()
-                        if triggerDependencies then triggerDependencies() end
-                    end,
-                    Refresh = function(new) UpdateList(new) end,
-                    SetVisibility = function(s) 
-                        Holder.Visible = (s == true)
-                        if not s and dropped then
-                            dropped = false
-                            DropContainer.Visible = false
-                            Arrow.Text = "v"
-                            Arrow.Position = UDim2.new(1, -20, 0, -1)
-                        end
+                local Obj = {}
+                Obj.Get = function(self)
+                    if opts.Multi then
+                        local copy = {}
+                        for _, v in ipairs(selected) do table.insert(copy, v) end
+                        return copy
                     end
-                }
+                    return selected
+                end
+                Obj.Set = function(selfOrVal, maybeVal)
+                    local v = (selfOrVal == Obj) and maybeVal or selfOrVal
+                    if opts.Multi then
+                        selected = {}
+                        selectedSet = {}
+                        if type(v) == "table" then
+                            for _, item in ipairs(v) do
+                                if item ~= nil then
+                                    selectedSet[item] = true
+                                    table.insert(selected, item)
+                                end
+                            end
+                        elseif v ~= nil then
+                            selected = { v }
+                            selectedSet[v] = true
+                        end
+                    else
+                        selected = v
+                    end
+                    updateFlag()
+                    ValueLabel.Text = formatSelected()
+                    UpdateList()
+                    if triggerDependencies then triggerDependencies() end
+                end
+                Obj.Refresh = function(selfOrNew, maybeNew)
+                    local new = (selfOrNew == Obj) and maybeNew or selfOrNew
+                    UpdateList(new)
+                end
+                Obj.SetVisibility = function(selfOrS, maybeS)
+                    local s = (selfOrS == Obj) and maybeS or selfOrS
+                    Holder.Visible = (s == true)
+                    if not s and dropped then
+                        dropped = false
+                        DropContainer.Visible = false
+                        Arrow.Text = "v"
+                        Arrow.Position = UDim2.new(1, -20, 0, -1)
+                    end
+                end
                 updateFlag()
                 if opts.Flag or opts.Name then
                     Library.SetFlags[opts.Flag or opts.Name] = Obj.Set
@@ -2224,13 +2229,18 @@ function Library:Window(title, size)
             local function Refresh()
                 local names = {}
                 pcall(function()
-                    local files = listfiles(ConfigDir)
-                    for _, file in pairs(files) do
-                        local name = file:match("([^/\\]+)$") or file
-                        name = name:gsub("%.json$", ""):gsub("%.JSON$", ""):gsub("%.cfg$", "")
-                        names[#names + 1] = name
+                    if isfolder(ConfigDir) then
+                        local files = listfiles(ConfigDir)
+                        for _, file in pairs(files) do
+                            local name = file:match("([^/\\]+)$") or file
+                            name = name:gsub("%.json$", ""):gsub("%.JSON$", ""):gsub("%.cfg$", ""):gsub("%.CFG$", "")
+                            if name and name ~= "" and not table.find(names, name) then
+                                names[#names + 1] = name
+                            end
+                        end
                     end
                 end)
+                table.sort(names)
                 ConfigList:Refresh(names)
             end
             
@@ -2365,8 +2375,12 @@ function Library:Window(title, size)
 
             task.spawn(function()
                 Refresh()
-                task.wait(0.5)
+                task.wait(0.3)
                 Refresh()
+                while task.wait(1.5) do
+                    if not ScreenGui or not ScreenGui.Parent then break end
+                    Refresh()
+                end
             end)
             
             return ConfigSection
