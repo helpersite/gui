@@ -637,7 +637,8 @@ function Library:KeybindList()
 
     function KeyListObj:UpdateItem(name, state, keyText)
         if not name then return end
-        if state then
+        local validKey = keyText and keyText ~= "" and keyText ~= "..." and keyText ~= "None" and keyText ~= "Unknown" and keyText ~= "Enum.KeyCode.Unknown"
+        if state and validKey then
             if not KeyListObj.Items[name] then
                 local Row = Create("Frame", {
                     Size = UDim2.new(1, 0, 0, 16),
@@ -659,7 +660,7 @@ function Library:KeybindList()
                     TextStrokeColor3 = Color3.fromRGB(0,0,0)
                 })
                 local KeyLabel = Create("TextLabel", {
-                    Text = "[" .. tostring(keyText or "...") .. "]",
+                    Text = "[" .. tostring(keyText) .. "]",
                     Size = UDim2.new(0, 50, 1, 0),
                     Position = UDim2.new(1, -50, 0, 0),
                     BackgroundTransparency = 1,
@@ -676,9 +677,7 @@ function Library:KeybindList()
                 KeyListObj.Items[name] = { Frame = Row, NameLabel = NameLabel, KeyLabel = KeyLabel }
             else
                 KeyListObj.Items[name].Frame.Visible = true
-                if keyText then
-                    KeyListObj.Items[name].KeyLabel.Text = "[" .. tostring(keyText) .. "]"
-                end
+                KeyListObj.Items[name].KeyLabel.Text = "[" .. tostring(keyText) .. "]"
             end
         else
             if KeyListObj.Items[name] then
@@ -1119,8 +1118,17 @@ function Library:Window(title, size)
                 local currentBindKey = nil
                 local function updateKeyList()
                     if Library.KeyList and Library.KeyList.UpdateItem then
-                        local keyName = currentBindKey and GetKeyName(currentBindKey) or nil
-                        Library.KeyList:UpdateItem(opts.Name or opts.Flag, state, keyName)
+                        local hasKey = currentBindKey and currentBindKey ~= Enum.KeyCode.Unknown and currentBindKey ~= Enum.UserInputType.None and currentBindKey ~= "None" and currentBindKey ~= "Unknown"
+                        if hasKey then
+                            local keyName = GetKeyName(currentBindKey)
+                            if keyName and keyName ~= "None" and keyName ~= "Unknown" and keyName ~= "" then
+                                Library.KeyList:UpdateItem(opts.Name or opts.Flag, state, keyName)
+                            else
+                                Library.KeyList:UpdateItem(opts.Name or opts.Flag, false)
+                            end
+                        else
+                            Library.KeyList:UpdateItem(opts.Name or opts.Flag, false)
+                        end
                     end
                 end
                 local function Set(v)
@@ -1148,7 +1156,7 @@ function Library:Window(title, size)
                 
                 function ToggleObj:Keybind(kopts)
                     local flag = kopts.Flag
-                    local defaultKey = kopts.Key or kopts.Default or Enum.KeyCode.X
+                    local defaultKey = kopts.Key or kopts.Default or Enum.KeyCode.Unknown
                     currentBindKey = defaultKey
                     local bind = { Key = defaultKey, Binding = false, Started = 0, Label = nil, OnTrigger = ToggleState, Callback = function(k) currentBindKey = k; updateKeyList(); if kopts.Callback then kopts.Callback(k) end end }
                     if flag then
@@ -1170,6 +1178,7 @@ function Library:Window(title, size)
                                 bind.Key = (input.UserInputType == Enum.UserInputType.Keyboard) and input.KeyCode or input.UserInputType
                                 bind.Label.Text = GetKeyName(bind.Key)
                                 bind.Label.TextColor3 = Library.Theme.Text
+                                currentBindKey = bind.Key
                                 if flag then
                                     if type(Library.Flags[flag]) == "table" then
                                         Library.Flags[flag].Key = bind.Key
@@ -1178,11 +1187,13 @@ function Library:Window(title, size)
                                         Library.Flags[flag] = { Key = bind.Key, key = bind.Key, mode = "Toggle", Toggled = false, active = false }
                                     end
                                 end
+                                updateKeyList()
                                 if bind.Callback then bind.Callback(bind.Key) end
                             end
                         end
                     end)
                     table.insert(Library.Registry, bind)
+                    updateKeyList()
                     return ToggleObj
                 end
 
@@ -1929,15 +1940,3 @@ function Library:Window(title, size)
                 task.wait(0.5)
                 Refresh()
             end)
-            
-            return ConfigSection
-        end
-
-        return Tab
-    end
-    
-    task.delay(0.2, function() Library:UpdateTheme() end)
-    return Window
-end
-
-return Library
