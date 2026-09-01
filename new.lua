@@ -1979,7 +1979,14 @@ function Library:Window(title, size)
                         data.Theme[k] = { math.floor(v.R * 255 + 0.5), math.floor(v.G * 255 + 0.5), math.floor(v.B * 255 + 0.5) }
                     end
                 end
-                for k, v in pairs(Library.Flags) do
+                local allFlags = {}
+                if type(Flags) == "table" then
+                    for k, v in pairs(Flags) do allFlags[k] = v end
+                end
+                if type(Library.Flags) == "table" then
+                    for k, v in pairs(Library.Flags) do allFlags[k] = v end
+                end
+                for k, v in pairs(allFlags) do
                     if type(k) == "string" and not k:match("^_") then
                         if typeof(v) == "Color3" then
                             data.Flags[k] = { _type = "Color3", R = math.floor(v.R * 255 + 0.5), G = math.floor(v.G * 255 + 0.5), B = math.floor(v.B * 255 + 0.5) }
@@ -2041,13 +2048,13 @@ function Library:Window(title, size)
                                 if v._type == "Color3" then
                                     val = Color3.fromRGB(v.R or 255, v.G or 255, v.B or 255)
                                 elseif v._type == "EnumItem" then
-                                    local keyEnum = Enum.KeyCode[v.Name] or Enum.UserInputType[v.Name]
+                                    local keyEnum = (Enum.KeyCode and Enum.KeyCode[v.Name]) or (Enum.UserInputType and Enum.UserInputType[v.Name])
                                     val = keyEnum or v.Name
                                 else
                                     local subTable = {}
                                     for subK, subV in pairs(v) do
                                         if type(subV) == "table" and subV._type == "EnumItem" then
-                                            local keyEnum = Enum.KeyCode[subV.Name] or Enum.UserInputType[subV.Name]
+                                            local keyEnum = (Enum.KeyCode and Enum.KeyCode[subV.Name]) or (Enum.UserInputType and Enum.UserInputType[subV.Name])
                                             subTable[subK] = keyEnum or subV.Name
                                         elseif type(subV) == "table" and subV._type == "Color3" then
                                             subTable[subK] = Color3.fromRGB(subV.R or 255, subV.G or 255, subV.B or 255)
